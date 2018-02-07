@@ -1,6 +1,7 @@
-package com.androidtutorialpoint.googlemapsdrawroute;
+package com.androidtutorialpoint.googlemapsdrawroute.activity;
 
 import android.Manifest;
+import android.content.Intent;
 import android.content.pm.PackageManager;
 import android.graphics.Color;
 import android.location.Location;
@@ -11,8 +12,13 @@ import android.support.v4.app.ActivityCompat;
 import android.support.v4.app.FragmentActivity;
 import android.support.v4.content.ContextCompat;
 import android.util.Log;
+import android.view.View;
+import android.widget.Button;
 import android.widget.Toast;
 
+import com.androidtutorialpoint.googlemapsdrawroute.service.DataParser;
+import com.androidtutorialpoint.googlemapsdrawroute.R;
+import com.androidtutorialpoint.googlemapsdrawroute.model.SaveLatLong;
 import com.google.android.gms.common.ConnectionResult;
 import com.google.android.gms.common.api.GoogleApiClient;
 import com.google.android.gms.location.LocationListener;
@@ -36,6 +42,7 @@ import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.net.HttpURLConnection;
 import java.net.URL;
+import java.text.DecimalFormat;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -45,39 +52,64 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
         GoogleApiClient.OnConnectionFailedListener,
         LocationListener {
 
+    private static final String TAG = "Save LatLong";
     private GoogleMap mMap;
     ArrayList<LatLng> MarkerPoints;
     GoogleApiClient mGoogleApiClient;
     Location mLastLocation;
     Marker mCurrLocationMarker;
     LocationRequest mLocationRequest;
+    public static final int MY_PERMISSIONS_REQUEST_LOCATION = 99;
+    double currentLatitude, currentLongitude;
+
+    ArrayList<SaveLatLong> arrayList;
+    Button btnSave;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
-        setContentView(R.layout.activity_maps);
+        setContentView(R.layout.activity_map_distance);
 
         if (android.os.Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
             checkLocationPermission();
         }
         // Initializing
         MarkerPoints = new ArrayList<>();
+        arrayList = new ArrayList<>();
 
         // Obtain the SupportMapFragment and get notified when the map is ready to be used.
         SupportMapFragment mapFragment = (SupportMapFragment) getSupportFragmentManager()
                 .findFragmentById(R.id.map);
         mapFragment.getMapAsync(this);
+
+        btnSave = (Button) findViewById(R.id.btnSave);
+
+        btnSave.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+
+                if (arrayList.size() != 0) {
+
+                    Log.e(TAG, ":::::Get arraylist:::size:::" + arrayList.size());
+                    for (int i = 0; i < arrayList.size(); i++) {
+
+                        Log.e(TAG, ":::::3::1::::" + arrayList.get(i).getSaveLatLongKm());
+
+                    }
+
+                    Intent arraySend = new Intent(MapsActivity.this, ShowAllLatLongActivity.class);
+                    arraySend.putExtra("AllLatLong", arrayList);
+                    Log.e("Send Array size ","===>" +arrayList.size());
+                    startActivity(arraySend);
+
+                } else {
+                    Toast.makeText(MapsActivity.this, "Not any one distance get", Toast.LENGTH_SHORT).show();
+                }
+            }
+        });
+
     }
 
-    /**
-     * Manipulates the map once available.
-     * This callback is triggered when the map is ready to be used.
-     * This is where we can add markers or lines, add listeners or move the camera. In this case,
-     * we just add a marker near Sydney, Australia.
-     * If Google Play services is not installed on the device, the user will be prompted to install
-     * it inside the SupportMapFragment. This method will only be triggered once the user has
-     * installed Google Play services and returned to the app.
-     */
     @Override
     public void onMapReady(GoogleMap googleMap) {
         mMap = googleMap;
@@ -90,8 +122,7 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
                 buildGoogleApiClient();
                 mMap.setMyLocationEnabled(true);
             }
-        }
-        else {
+        } else {
             buildGoogleApiClient();
             mMap.setMyLocationEnabled(true);
         }
@@ -103,7 +134,7 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
             public void onMapClick(LatLng point) {
 
                 // Already two locations
-                if (MarkerPoints.size() > 1) {
+                if (MarkerPoints.size() > 0) {
                     MarkerPoints.clear();
                     mMap.clear();
                 }
@@ -132,24 +163,76 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
                 mMap.addMarker(options);
 
                 // Checks, whether start and end locations are captured
-                if (MarkerPoints.size() >= 2) {
-                    LatLng origin = MarkerPoints.get(0);
-                    LatLng dest = MarkerPoints.get(1);
+                if (MarkerPoints.size() >= 1) {
+                    LatLng startMarkerPoint = new LatLng(currentLatitude, currentLongitude);
+                    Log.e("Get Marker points ", ":::::::" + startMarkerPoint);
+//                    LatLng origin = MarkerPoints.get(0);
+                    LatLng endMarkerPoint = MarkerPoints.get(0);
+
+                    Log.e(" origin ", " ::: : " + startMarkerPoint);
+                    Log.e(" dest ", " ::: : " + endMarkerPoint);
+
 
                     // Getting URL to the Google Directions API
-                    String url = getUrl(origin, dest);
+                    String url = getUrl(startMarkerPoint, endMarkerPoint);
                     Log.d("onMapClick", url.toString());
                     FetchUrl FetchUrl = new FetchUrl();
 
                     // Start downloading json data from Google Directions API
                     FetchUrl.execute(url);
                     //move map camera
-                    mMap.moveCamera(CameraUpdateFactory.newLatLng(origin));
+                    mMap.moveCamera(CameraUpdateFactory.newLatLng(startMarkerPoint));
                     mMap.animateCamera(CameraUpdateFactory.zoomTo(11));
+
+                    CalculationByDistance(startMarkerPoint, endMarkerPoint);
                 }
 
             }
         });
+
+    }
+
+
+
+    //Calculat distance between two point on map
+    public double CalculationByDistance(LatLng StartP, LatLng EndP) {
+//        arrayList = new ArrayList<>();
+        Log.e("Start point", "::::" + StartP + ":::End Point::::" + EndP);
+        int Radius = 6371;// radius of earth in Km
+        double lat1 = StartP.latitude;
+        double lat2 = EndP.latitude;
+        double lon1 = StartP.longitude;
+        double lon2 = EndP.longitude;
+        double dLat = Math.toRadians(lat2 - lat1);
+        double dLon = Math.toRadians(lon2 - lon1);
+        double a = Math.sin(dLat / 2) * Math.sin(dLat / 2)
+                + Math.cos(Math.toRadians(lat1))
+                * Math.cos(Math.toRadians(lat2)) * Math.sin(dLon / 2)
+                * Math.sin(dLon / 2);
+        double c = 2 * Math.asin(Math.sqrt(a));
+        double valueResult = Radius * c;
+        double km = valueResult / 1;
+        DecimalFormat newFormat = new DecimalFormat("####");
+        int kmInDec = Integer.valueOf(newFormat.format(km));
+        double meter = valueResult % 1000;
+        int meterInDec = Integer.valueOf(newFormat.format(meter));
+        Log.e("Radius Value", "" + valueResult + "   KM  " + kmInDec
+                + " Meter   " + meterInDec);
+
+        SaveLatLong saveLatLong = new SaveLatLong();
+        saveLatLong.setSaveTotalDistance(valueResult);
+        saveLatLong.setSaveLatLongKm(kmInDec);
+        saveLatLong.setSaveLatLongMeter(meterInDec);
+        arrayList.add(saveLatLong);
+
+
+//        for (int i=0; i<=arrayList.size(); i++){
+//            arrLstTotal.addAll(arrayL);
+//
+//        }
+        Log.e(TAG, ":::::1::::::" + saveLatLong);
+        Log.e(TAG, ":::::ArrayList::::::" + arrayList.size());
+        return Radius * c;
 
     }
 
@@ -264,17 +347,17 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
 
             try {
                 jObject = new JSONObject(jsonData[0]);
-                Log.d("ParserTask",jsonData[0].toString());
+                Log.d("ParserTask", jsonData[0].toString());
                 DataParser parser = new DataParser();
                 Log.d("ParserTask", parser.toString());
 
                 // Starts parsing data
                 routes = parser.parse(jObject);
-                Log.d("ParserTask","Executing routes");
-                Log.d("ParserTask",routes.toString());
+                Log.d("ParserTask", "Executing routes");
+                Log.d("ParserTask", routes.toString());
 
             } catch (Exception e) {
-                Log.d("ParserTask",e.toString());
+                Log.d("ParserTask", e.toString());
                 e.printStackTrace();
             }
             return routes;
@@ -310,16 +393,15 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
                 lineOptions.width(10);
                 lineOptions.color(Color.RED);
 
-                Log.d("onPostExecute","onPostExecute lineoptions decoded");
+                Log.d("onPostExecute", "onPostExecute lineoptions decoded");
 
             }
 
             // Drawing polyline in the Google Map for the i-th route
-            if(lineOptions != null) {
+            if (lineOptions != null) {
                 mMap.addPolyline(lineOptions);
-            }
-            else {
-                Log.d("onPostExecute","without Polylines drawn");
+            } else {
+                Log.d("onPostExecute", "without Polylines drawn");
             }
         }
     }
@@ -345,14 +427,13 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
                 == PackageManager.PERMISSION_GRANTED) {
             LocationServices.FusedLocationApi.requestLocationUpdates(mGoogleApiClient, mLocationRequest, this);
         }
-
     }
 
     @Override
     public void onConnectionSuspended(int i) {
-
     }
 
+    //Get current location and Update location
     @Override
     public void onLocationChanged(Location location) {
 
@@ -362,7 +443,10 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
         }
 
         //Place current location marker
-        LatLng latLng = new LatLng(location.getLatitude(), location.getLongitude());
+        currentLatitude = location.getLatitude();
+        currentLongitude = location.getLongitude();
+
+        LatLng latLng = new LatLng(currentLatitude, currentLongitude);
         MarkerOptions markerOptions = new MarkerOptions();
         markerOptions.position(latLng);
         markerOptions.title("Current Position");
@@ -377,16 +461,13 @@ public class MapsActivity extends FragmentActivity implements OnMapReadyCallback
         if (mGoogleApiClient != null) {
             LocationServices.FusedLocationApi.removeLocationUpdates(mGoogleApiClient, this);
         }
-
     }
 
     @Override
     public void onConnectionFailed(ConnectionResult connectionResult) {
-
     }
 
-    public static final int MY_PERMISSIONS_REQUEST_LOCATION = 99;
-    public boolean checkLocationPermission(){
+    public boolean checkLocationPermission() {
         if (ContextCompat.checkSelfPermission(this,
                 Manifest.permission.ACCESS_FINE_LOCATION)
                 != PackageManager.PERMISSION_GRANTED) {
