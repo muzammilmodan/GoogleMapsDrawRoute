@@ -10,6 +10,8 @@ import android.widget.TextView;
 import com.androidtutorialpoint.googlemapsdrawroute.R;
 import com.androidtutorialpoint.googlemapsdrawroute.model.SaveLatLong;
 
+import java.util.Collections;
+import java.util.Comparator;
 import java.util.List;
 
 /**
@@ -39,6 +41,15 @@ public class ShowAllLatLongAdapter extends RecyclerView.Adapter<ShowAllLatLongAd
             SaveLatLong latLong = latLongList.get(position);
             Log.e("latLong ====", "::" + latLongList.get(position));
             Log.e("latLong ====", "Convert ::" + String.valueOf(latLong.getSaveLatLongKm()));
+
+            Collections.sort(latLongList, new Comparator<SaveLatLong>() {
+                @Override
+                public int compare(SaveLatLong lhs, SaveLatLong rhs) {
+                    // -1 - less than, 1 - greater than, 0 - equal, all inversed for descending
+                    return lhs.getSaveLatLongKm() > rhs.getSaveLatLongKm() ? -1 :
+                            (lhs.getSaveLatLongKm() < rhs.getSaveLatLongKm()) ? 1 : 0;
+                }
+            });
 
 //            Collections.sort(latLongList, SaveLatLong.shortShowLatLong);
 //            for (SaveLatLong strLatLong : latLongList) {
